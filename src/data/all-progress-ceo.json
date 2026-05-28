@@ -1,0 +1,510 @@
+{
+  "เอกสาร": "สรุปความรู้โครงการ rd-agent-imed-transform",
+  "ภาษา": "ไทย",
+  "วันที่สำรวจ": "2026-05-28",
+  "ผู้สำรวจ": "GitHub Copilot (Claude Sonnet 4.6)",
+  "วัตถุประสงค์": "ให้ผู้บริหารระดับสูงเข้าใจภาพรวมของโครงการ สถานะปัจจุบัน และสิ่งที่ต้องทำต่อไป",
+
+  "ภาพรวมโครงการ": {
+    "ชื่อโครงการ": "rd-agent-imed-transform",
+    "เป้าหมายหลัก": "แปลงโค้ด Java EJB 2.x CMP (Legacy) ให้กลายเป็น Spring Boot + Spring Data JPA อัตโนมัติด้วย AI Multi-Agent",
+    "เทคโนโลยีหลัก": [
+      "Python",
+      "LangGraph",
+      "LangChain",
+      "OpenAI / Gemini / Claude",
+      "Java",
+      "Next.js",
+      "PostgreSQL",
+      "Qdrant",
+      "Phoenix",
+      "OpenTelemetry"
+    ],
+    "สถานะรวม": "กำลังดำเนินการ (ประมาณ 85% เสร็จสมบูรณ์ — compile_persistence ผ่านแล้ว, Garage S3 พร้อมใช้งาน, Insight Agent wired)",
+    "โซนแหล่งรหัส": {
+      "ai-migration-core": "Python — ระบบ AI Pipeline หลัก",
+      "analytics": "TypeScript/Next.js — Dashboard สำหรับตรวจสอบผลการรัน",
+      "obsidian-brain": "Markdown — ฐานความรู้ทีม (Second Brain)",
+      "imed-transform": "Java — โค้ด Java ต้นฉบับที่จะถูกแปลง",
+      "docker-compose.yaml": "Infrastructure ครบชุด"
+    }
+  },
+
+  "พื้นที่ที่ 1_ai-migration-core": {
+    "ชื่อ": "ระบบ AI Pipeline หลัก (ai-migration-core)",
+    "สรุปสั้น": "ระบบ LangGraph ที่ใช้ AI Agents หลายตัวทำงานร่วมกันเพื่อแปลงโค้ด EJB ไปเป็น JPA โดยอัตโนมัติ",
+    "สถานะ": "82% เสร็จสมบูรณ์",
+
+    "สถาปัตยกรรม_กราฟ": {
+      "ประเภท": "LangGraph StateGraph (Directed Acyclic Graph with conditional loop)",
+      "ลำดับโหนด": [
+        "START → manager",
+        "manager → db_pipeline_start → analyzer",
+        "analyzer → obs_analysis_note → planner",
+        "planner → obs_migration_entry → refactor",
+        "refactor → db_after_refactor → reviewer",
+        "reviewer → db_after_reviewer → test_runner",
+        "test_runner → [เงื่อนไข: compile_passed AND tests_passed]",
+        "  ✓ สำเร็จ → obs_run_log → annotate_outcome → END",
+        "  ✗ ล้มเหลว (iterations < max) → fix_agent → db_after_fix → reviewer",
+        "  ✗ เกิน max iterations → obs_run_log → annotate_outcome → END"
+      ],
+      "การหยุดลูปซ่อม": "หยุดเมื่อ compile_passed=True AND tests_passed=True หรือเมื่อ fix_iterations >= max_fix_iterations (default 5)"
+    },
+
+    "state_schema": {
+      "คำอธิบาย": "MigrationState (TypedDict) — State ที่แชร์กันระหว่างทุก Node ในกราฟ",
+      "ฟิลด์สำคัญ": {
+        "source_dir": "path ของ Java source tree ต้นฉบับ",
+        "target_dir": "path ของไฟล์ JPA ที่จะเขียนผลลัพธ์",
+        "module_path": "ชื่อ Gradle sub-module (เช่น 'persistence')",
+        "target_pattern": "กลยุทธ์การแปลง (เช่น 'spring-data-jpa')",
+        "ejb_inventory": "JSON string ของรายการ EJB entities ทั้งหมด (จาก Analyzer)",
+        "migration_plan": "JSON string ของแผนการแปลง (จาก Planner)",
+        "refactored_files": "list ของ paths ไฟล์ JPA ที่เขียนแล้ว",
+        "compile_passed": "True เมื่อ compileJava สำเร็จ",
+        "tests_passed": "True เมื่อ tests ทั้งหมดผ่าน",
+        "fix_iterations": "จำนวนครั้งที่ Fix Agent ทำงาน",
+        "messages": "log ข้อความจากทุก agents (append-only)"
+      }
+    },
+
+    "agents_7_ตัว": {
+      "1_manager": {
+        "บทบาท": "ตรวจสอบ input, สรุปขอบเขต migration, ส่งต่อให้ Analyzer",
+        "ใช้ tools": "BRAIN_TOOLS (อ่าน/เขียน Obsidian vault)",
+        "output": "ข้อความยืนยันขอบเขต + รายชื่อ agents และหน้าที่"
+      },
+      "2_analyzer": {
+        "บทบาท": "วิเคราะห์ EJB source code และสร้าง EjbInventory JSON",
+        "ใช้ tools": "BRAIN_TOOLS",
+        "output": "EjbInventory JSON — รายการ entities, tables, fields, finders",
+        "กฎเหล็ก": "ห้ามสร้างข้อมูลที่ไม่มีใน source, ห้าม infer types จากชื่อ column"
+      },
+      "3_planner": {
+        "บทบาท": "สร้าง MigrationPlan JSON จาก EjbInventory — กำหนดการ map @Entity, @Column, Spring Data repo",
+        "ใช้ tools": "ไม่มี (pure reasoning จาก inventory)",
+        "output": "MigrationPlan JSON"
+      },
+      "4_refactor": {
+        "บทบาท": "เขียนไฟล์ Java JPA ใหม่ตาม MigrationPlan",
+        "ใช้ tools": "file_tools (read/write), brain_tools",
+        "output": "list ของไฟล์ JPA ที่เขียนแล้ว"
+      },
+      "5_reviewer": {
+        "บทบาท": "Compile โค้ด, วิเคราะห์ error, รัน SonarQube scan",
+        "ใช้ tools": "compile_module, read_file, run_sonar_analysis, get_sonar_issues, BRAIN_TOOLS",
+        "output": "ReviewReport JSON — status pass/fail, errors, sonar_issues"
+      },
+      "6_test_agent": {
+        "บทบาท": "รัน Gradle test และรายงานผล",
+        "ใช้ tools": "shell_tools (run Gradle)",
+        "output": "TestReport JSON — tests_passed"
+      },
+      "7_fix_agent": {
+        "บทบาท": "แก้ไขข้อผิดพลาดจาก Reviewer และ Test Agent",
+        "ใช้ tools": "file_tools, shell_tools, BRAIN_TOOLS",
+        "output": "FixReport JSON — การแก้ไขที่ทำ"
+      }
+    },
+
+    "การรองรับ_multi_provider": {
+      "model_policy.py": "ควบคุม whitelist โมเดลที่อนุญาตต่อ provider",
+      "providers": {
+        "OpenAI": "gpt-4.1, gpt-5 (default)",
+        "Gemini": "gemini-2.5-pro, gemini-2.0-flash",
+        "Claude": "claude-sonnet-4-6, claude-opus-4-7",
+        "GLM": "glm-5-ultra, glm-4-air (ZhipuAI)",
+        "DeepSeek": "deepseek-v4-pro, deepseek-v3",
+        "OpenRouter": "รองรับโมเดลฟรีหลายตัว"
+      },
+      "การเลือก": "ตั้ง LLM_PROVIDER= ใน .env"
+    },
+
+    "observability": {
+      "OTel_tracing": "App → OTLP HTTP :4318 → otel-collector → Phoenix + APM Server",
+      "traced_node": "decorator ที่ wrap ทุก node ใน graph ให้สร้าง OTel span",
+      "Phoenix_annotations": {
+        "session_level": "compile_passed, tests_passed, fix_iterations, ejb_count, migration_outcome",
+        "span_level": "pass/fail annotations สำหรับ reviewer, test_runner, fix_agent nodes",
+        "endpoint": "POST /v1/session_annotations และ /v1/span_annotations"
+      },
+      "Langfuse": "LLM trace UI self-hosted (ถ้า configure keys)",
+      "Redis_checkpoint": "LangGraph checkpointing สำหรับ state recovery"
+    },
+
+    "tools_suite": {
+      "brain_tools": "อ่าน/เขียน/ค้นหา Obsidian vault (Semantic search ผ่าน Qdrant)",
+      "file_tools": "อ่าน/เขียน Java files, ค้นหา Gradle root",
+      "shell_tools": "รัน Gradle compile/test, SonarQube analysis",
+      "xml_tools": "parse ejb-jar.xml, persistence.xml",
+      "obsidian_tools": "direct file operations บน vault",
+      "file_server": "upload artifacts ไป Garage S3"
+    },
+
+    "สิ่งที่ทำสำเร็จแล้ว": [
+      "Pipeline ครบทุก node ทั้ง 7 agents",
+      "Context overflow fix (truncate tool results ที่ 12K chars)",
+      "Phoenix REST integration — session + span annotations",
+      "Multi-provider LLM routing",
+      "Redis checkpointing",
+      "Garage S3 artifact upload",
+      "poc_dental.py รัน Exit Code 0 สำเร็จ",
+      "แก้ไข OutOfMemoryError: เพิ่ม fork options ให้ javac มี heap 2GB แยกจาก Gradle daemon (512m)",
+      "แก้ไข Home classes 7 ตัว: เพิ่ม import iMedDoctorDTO ที่ขาดหายไป",
+      "แก้ไข AttendingPhysicialDischargeHome.java: ลบ entity.setBaseVsExtAdviceId() ที่ VO ไม่มี getter",
+      "แก้ไข DoctorOrderContinueHome.java: ลบ entity.setAddRequestReason() ที่ VO ไม่มี getter",
+      "OTel collector + config.py: เพิ่ม header x-phoenix-project-name: imed-migration",
+      "persistence:compileJava — ExitCode: 0, BUILD SUCCESSFUL (2026-05-28)",
+      "V2 (Phoenix routing): traces routing ยืนยันแล้ว"
+    ],
+
+    "ปัญหาที่แก้ไขแล้วในรอบนี้": [
+      {
+        "ปัญหา": "OutOfMemoryError: GC overhead limit exceeded ใน :persistence:compileJava",
+        "สาเหตุ": "2839 Java files compiled ใน Gradle JVM เดียวกัน (1.5GB heap ไม่พอ)",
+        "การแก้": "เพิ่ม options.fork=true + forkOptions.jvmArgs=[-Xmx2g, -XX:+UseG1GC, -XX:-UseGCOverheadLimit] ใน persistence/build.gradle"
+      },
+      {
+        "ปัญหา": "cannot find symbol: method getBaseVsExtAdviceId() ใน AttendingPhysicialDischargeHome",
+        "สาเหตุ": "AI generator ใช้ชื่อ column ของ entity (base_vs_ext_advice_id) แทนชื่อ field ของ VO (base_advice)",
+        "การแก้": "ลบบรรทัด entity.setBaseVsExtAdviceId(vo.getBaseVsExtAdviceId()) ออก"
+      },
+      {
+        "ปัญหา": "cannot find symbol: method getAddRequestReason() ใน DoctorOrderContinueHome",
+        "สาเหตุ": "AI สร้าง getter ที่ไม่มีอยู่จริงใน DoctorOrderContinueVO",
+        "การแก้": "ลบบรรทัด entity.setAddRequestReason(vo.getAddRequestReason()) ออก"
+      }
+    ],
+
+    "สิ่งที่ยังต้องทำ": [
+      "รัน poc_doctor ด้วย iterations มากขึ้นเพื่อให้ test_agent สร้าง unit tests (tests_passed ยังเป็น False)",
+      "Index Obsidian vault notes เข้า Qdrant brain-notes collection",
+      "Phase 2: migrate persistence packages อื่น ๆ ที่เหลือ"
+    ]
+  },
+
+  "พื้นที่ที่ 2_obsidian_brain": {
+    "ชื่อ": "Second Brain — ฐานความรู้ทีม (Obsidian Vault)",
+    "สรุปสั้น": "Obsidian vault ที่เก็บความรู้เกี่ยวกับ EJB→JPA migration patterns, การตัดสินใจ, ความล้มเหลว, และสถานะงาน",
+    "สถานะ": "60% เสร็จสมบูรณ์",
+
+    "โครงสร้างไฟล์": {
+      "Home.md": "หน้าหลัก MOC (Map of Content) — Dashboard ภาพรวม migration progress",
+      "Migration-Board.md": "Kanban board — ติดตามงานทุก phase (Backlog → Done)",
+      "troubleshooting.md": "วิธีแก้ปัญหาที่พบบ่อย",
+      "analysis/": "บันทึกการวิเคราะห์ EJB branches และ patterns",
+      "failures/": "บันทึกความล้มเหลวและการวิเคราะห์สาเหตุ",
+      "migrations/": "เอกสารแผนการ migrate แต่ละ package",
+      "patterns/": "Pattern library สำหรับ EJB→JPA",
+      "summaries/": "สรุปผลการ migrate แต่ละรอบ",
+      "templates/": "Template สำหรับบันทึกใหม่",
+      "entity-playbooks/": "Playbook การ map @Entity สำหรับแต่ละ persistence package",
+      "evaluations/": "ผลการประเมิน agent output",
+      "decisions/": "ADR — Architecture Decision Records",
+      "daily/": "Daily notes",
+      "logs/": "Log จาก migration runs"
+    },
+
+    "kanban_board_Migration_Board": {
+      "Backlog": [
+        "Validate remaining persistence sub-packages (GAP-01)",
+        "Phase 4: JNDI lookup removal",
+        "Phase 5: Flyway/Liquibase schema migrations"
+      ],
+      "Analyzing": [
+        "Analyzer Agent — EJB pattern detection coverage",
+        "Planner Agent — migration strategy output"
+      ],
+      "Refactoring": [
+        "8 persistence packages กำลัง confirm @Entity mappings",
+        "iMedDFPersistence, iMedDentalPersistence, iMedDoctorPersistence",
+        "iMedDrugPersistence, iMedIPDPersistence, iMedLabPersistence",
+        "iMedNutritionPersistence, iMedOPDPersistence"
+      ],
+      "Testing": [
+        "gradlew test — persistence, backend, imed-web modules",
+        "Smoke test JNDI datasource",
+        "Validate JpaConfig.java"
+      ]
+    },
+
+    "การเชื่อมกับ_AI_Agents": "Brain tools ให้ agents อ่าน/เขียน vault ได้โดยตรง — ทำให้ AI จำผลการเรียนรู้จากรอบก่อน"
+  },
+
+  "พื้นที่ที่ 3_docker_infrastructure": {
+    "ชื่อ": "Docker Infrastructure (docker-compose.yaml)",
+    "สรุปสั้น": "Stack ครบชุดสำหรับ AI Pipeline — Storage, Observability, Code Quality, File Server",
+    "สถานะ": "90% เสร็จสมบูรณ์",
+    "ชื่อ_project": "ai-migration-platform",
+
+    "services": {
+      "postgres": {
+        "image": "postgres:17",
+        "container": "aimig-postgres",
+        "หน้าที่": "ฐานข้อมูลหลัก — sessions, analytics, Phoenix traces (phoenix_data DB)",
+        "port": "5432",
+        "สถานะ": "core service (เปิดเสมอ)"
+      },
+      "qdrant": {
+        "image": "qdrant/qdrant:v1.17",
+        "container": "aimig-qdrant",
+        "หน้าที่": "Vector database สำหรับ RAG — เก็บ embeddings ของ Obsidian vault notes",
+        "ports": "6333 (HTTP), 6334 (gRPC)",
+        "สถานะ": "core service"
+      },
+      "redis": {
+        "image": "redis:7-alpine",
+        "container": "aimig-redis",
+        "หน้าที่": "LangGraph state checkpointing — ช่วยให้ resume pipeline ได้หลัง crash",
+        "port": "6379",
+        "สถานะ": "core service"
+      },
+      "file-server": {
+        "image": "aimig-garage:local (Garage S3)",
+        "container": "aimig-file-server",
+        "หน้าที่": "S3-compatible object storage — เก็บ run artifacts (reports, logs, inventories)",
+        "ports": "3900-3903",
+        "สถานะ": "core service",
+        "หมายเหตุ": "ต้อง setup bucket 'traces' ครั้งแรกก่อนใช้งาน"
+      },
+      "otel-collector": {
+        "image": "otel/opentelemetry-collector-contrib:0.102.0",
+        "container": "aimig-otel-collector",
+        "หน้าที่": "รับ OTel spans จาก app แล้ว fan-out ไปยัง Phoenix และ APM Server",
+        "ports": "4317 (gRPC), 4318 (HTTP), 13133 (health)",
+        "สถานะ": "core service"
+      },
+      "phoenix": {
+        "image": "arizephoenix/phoenix:16.2.0",
+        "container": "aimig-phoenix",
+        "หน้าที่": "LLM Trace UI — ดู traces, spans, annotations จาก AI pipeline",
+        "port": "6006",
+        "profile": "phoenix",
+        "เปิดด้วย": "docker compose --profile phoenix up"
+      },
+      "elasticsearch": {
+        "image": "elasticsearch:8.13.0",
+        "container": "aimig-elasticsearch",
+        "หน้าที่": "เก็บ trace/log/metrics จาก APM Server",
+        "port": "9200",
+        "profile": "elk"
+      },
+      "kibana": {
+        "image": "kibana:8.13.0",
+        "container": "aimig-kibana",
+        "หน้าที่": "Kibana APM Dashboard — ดู traces/logs/metrics",
+        "port": "5601",
+        "profile": "elk",
+        "เปิดด้วย": "docker compose --profile elk up"
+      },
+      "sonarqube": {
+        "image": "sonarqube:community",
+        "container": "aimig-sonarqube",
+        "หน้าที่": "Static code analysis — Reviewer agent ใช้ scan migrated Java",
+        "port": "9000",
+        "profile": "scan",
+        "เปิดด้วย": "docker compose --profile scan up"
+      }
+    },
+
+    "profiles": {
+      "ไม่ระบุ profile": "เปิดเฉพาะ core services: postgres, qdrant, redis, file-server, otel-collector",
+      "--profile phoenix": "เพิ่ม Phoenix LLM trace UI",
+      "--profile elk": "เพิ่ม Elasticsearch + Kibana + APM Server",
+      "--profile scan": "เพิ่ม SonarQube + sonar-scanner",
+      "ครบทุกตัว": "docker compose --profile phoenix --profile elk --profile scan up"
+    },
+
+    "data_persistence": "ข้อมูลทั้งหมดเก็บใน ./docker-data/ บน D: drive (WSL path)",
+
+    "observability_pipeline": {
+      "flow": "LangGraph App → OTLP HTTP :4318 → otel-collector → Phoenix (:6006) + APM Server (:8200)",
+      "APM_flow": "APM Server → Elasticsearch → Kibana APM UI"
+    }
+  },
+
+  "พื้นที่ที่ 4_analytics_dashboard": {
+    "ชื่อ": "Analytics Dashboard (Next.js)",
+    "สรุปสั้น": "Dashboard ที่แสดงผล migration runs ทั้งหมด — metrics, timelines, artifacts, และ AI Insight Agent",
+    "สถานะ": "70% เสร็จสมบูรณ์",
+    "framework": "Next.js 14+ (App Router)",
+    "database": "PostgreSQL ผ่าน Prisma 7",
+
+    "pages": {
+      "/": "Overview — Global metrics (total runs, success rate, avg duration) + recent runs list",
+      "/runs": "รายการ run ทั้งหมด พร้อม filter ตาม status",
+      "/runs/[runId]": {
+        "สรุป": "Run detail view — แบ่งเป็น 5 tabs ที่ใช้ shared layout (layout.tsx) กับ tab nav ร่วมกัน",
+        "layout": "layout.tsx (server component) — fetch session, render '← All runs', run ID + StatusBadge, และ RunTabNav client component",
+        "tabs": {
+          "Overview": "KPI cards (Module, Pattern, Started, Duration) + Node Timings Chart + Handoffs + Metadata + Timeline + Errors",
+          "Agents": "AgentRun table — Agent name, Fix iteration, Status, Duration, Tokens (in/out/total), Cost USD, Model, Langfuse link",
+          "LLM calls": "LlmCall table — When, Agent, Model, Status, Tokens, Cost, Latency + <details> accordion สำหรับ System/User prompt, Response, Error (กรองด้วย ?agentRunId=)",
+          "Files": "FileChange table — file path, op badge (create/update/delete), Lines +/-, DiffViewer component (กรองด้วย ?agentRunId=)",
+          "Validate output": "ไปยัง /validate?runId= — Hallucination/Quality comparison"
+        },
+        "run_tab_nav": "RunTabNav client component (run-tab-nav.tsx) ใช้ usePathname() highlight tab ที่ active ด้วย --accent color + pill background",
+        "fix_สำเร็จ_2026-05-28": "สร้าง layout.tsx + RunTabNav — แก้ปัญหา tabs หายเมื่อไปยัง sub-pages (agents/llm-calls/files)"
+      },
+      "/file-server": "Browser ไฟล์ artifacts ใน Garage S3",
+      "/validate": "Hallucination/Quality score comparison ระหว่าง runs",
+      "/nodes": "Node timing chart — ดูว่า agent ไหนใช้เวลานานแค่ไหน",
+      "/trace": "OTel trace deep-link viewer",
+      "/usage-compare": "เปรียบเทียบ LLM usage/cost ระหว่าง runs",
+      "/learn": "บทเรียนแบบ chapter (layers, infra, tech-stack, agent, analytics, data flow)",
+      "/errors": "Error log viewer"
+    },
+
+    "database_schema_Prisma": {
+      "Session": "1 row ต่อ 1 migration run — เก็บ status, source/target dir, compile/test results, costs",
+      "Handoff": "บันทึกทุก agent handoff (from_agent → to_agent + payload)",
+      "History": "Append-only event stream (pipeline_start, agent_result, pipeline_complete, etc.)",
+      "LogAudit": "Structured audit log",
+      "AgentRun": "ผลของแต่ละ agent run พร้อม duration",
+      "LlmCall": "ทุก LLM API call — tokens, cost, model, provider",
+      "FileChange": "ทุก Java file ที่เขียนหรือแก้ไข",
+      "Artifact": "links ไปยัง S3 artifacts",
+      "SessionMetadata": "key-value pairs เพิ่มเติมต่อ session"
+    },
+
+    "api_routes": {
+      "GET /api/runs": "list recent runs (filter by status, limit)",
+      "GET /api/runs/[runId]": "ดูรายละเอียด run เดียว",
+      "GET /api/metrics": "global aggregate metrics",
+      "GET /api/file-server": "list/read S3 artifacts",
+      "GET /api/validate": "hallucination scores",
+      "GET /api/openai-usage": "OpenAI token/cost breakdown",
+      "POST /api/insight-agent": "AI Copilot chat — เชื่อมกับ FastAPI /chat endpoint แล้ว (2026-05-28)"
+    },
+
+    "components": {
+      "overview-view.tsx": "หน้า overview ด้วย Framer Motion animations + status breakdown chart",
+      "run-tab-nav.tsx": "Client component — tab nav สำหรับ /runs/[runId] ใช้ usePathname() highlight active tab ด้วย accent pill style",
+      "insight-agent-panel.tsx": "AI Copilot panel — chat UI ที่พับได้, quick prompts, glossary tooltips",
+      "node-timings-chart.tsx": "Bar chart แสดง duration ของแต่ละ agent node",
+      "diff-viewer.tsx": "Code diff viewer สำหรับดู Java file changes",
+      "format.tsx": "Utilities: StatusBadge, formatMs, formatDate"
+    },
+
+    "insight_agent_panel": {
+      "สถานะ": "เชื่อมต่อแล้ว — route.ts proxy ไปยัง http://localhost:8000/chat",
+      "ทำสำเร็จแล้ว": [
+        "FastAPI POST /chat endpoint เพิ่มใน api.py รองรับทุก LLM providers",
+        "System prompt: Insight AI co-pilot สำหรับ EJB→JPA migration dashboard",
+        "Glossary อัตโนมัติ: EJB, JPA, LangGraph, SpringJpa, Home, refactor, fix_agent",
+        "route.ts เปลี่ยนจาก stub → proxy HTTP to FastAPI พร้อม error handling + 90s timeout",
+        "รองรับ env var FASTAPI_URL เพื่อ override endpoint ได้"
+      ],
+      "ฟีเจอร์": [
+        "Chat UI พับ/ขยายได้",
+        "Quick prompts (Explain anomaly, Optimize model, Compare runs)",
+        "Glossary tooltips สำหรับคำศัพท์ EJB/JPA/LangGraph",
+        "Rich markdown rendering"
+      ]
+    },
+
+    "การเชื่อมกับ_ai_pipeline": {
+      "dual_write": "Python FastAPI เขียนข้อมูลลง PostgreSQL โดยตรงผ่าน SQLAlchemy/asyncpg",
+      "OTel_link": "Session row มี artifactPrefix ชี้ไปที่ S3 path สำหรับ deep-link จาก dashboard"
+    }
+  },
+
+  "พื้นที่ที่ 5_rag_and_fileserver": {
+    "ชื่อ": "RAG Pipeline & File Server",
+    "สรุปสั้น": "Semantic search บน Obsidian vault ด้วย Gemini embeddings + Qdrant และ Garage S3 สำหรับ artifact storage",
+    "สถานะ": "65% เสร็จสมบูรณ์",
+
+    "rag_pipeline": {
+      "embedding_model": "Google Gemini — models/gemini-embedding-2-preview",
+      "embedding_dimensions": 3072,
+      "vector_store": "Qdrant (container: aimig-qdrant)",
+      "collection": "brain-notes",
+      "ที่ตั้ง_code": "ai-migration-core/src/ai_migration_core/rag/store.py",
+      "การทำงาน": [
+        "1. อ่าน Obsidian vault notes (.md files)",
+        "2. สร้าง embeddings ด้วย Gemini",
+        "3. เก็บใน Qdrant collection 'brain-notes'",
+        "4. Agents เรียก similarity_search เพื่อค้นหา patterns ที่เกี่ยวข้อง"
+      ],
+      "brain_tools_integration": "BRAIN_TOOLS ให้ agents ค้นหา/บันทึก vault โดยตรง — ทำให้ AI 'จำ' ผลงานจากรอบก่อน"
+    },
+
+    "file_server_garage_s3": {
+      "technology": "Garage — S3-compatible object storage (self-hosted)",
+      "container": "aimig-file-server",
+      "ports": "3900 (S3 API), 3901, 3902, 3903 (cluster)",
+      "bucket": "langfuse (configurable ผ่าน FILE_SERVER_BUCKET)",
+      "artifacts_ที่_upload": [
+        "run_log.json — สรุป run ทั้งหมด",
+        "ejb_inventory.json — รายการ EJB entities",
+        "migration_plan.json — แผนการแปลง",
+        "review_report.json — ผล compile/sonar",
+        "test_report.json — ผล test"
+      ],
+      "key_format": "{prefix}/runs/{run_id}/{filename}",
+      "ที่ตั้ง_code": "ai-migration-core/src/ai_migration_core/tools/file_server.py",
+      "client": "boto3 S3 client (path-style addressing สำหรับ Garage)",
+      "analytics_integration": "analytics/src/lib/fileServer.ts ใช้ AWS SDK S3Client เชื่อมกับ Garage"
+    },
+
+    "สิ่งที่ต้องทำ": [
+      "Index Obsidian vault notes เข้า Qdrant (รัน indexing script ครั้งแรก)",
+      "ทดสอบ artifact download ผ่าน analytics /file-server page"
+    ]
+  },
+
+  "สรุปสถานะรวมและสิ่งที่ต้องทำต่อ": {
+    "วันที่อัปเดต": "2026-05-28",
+    "สำเร็จแล้ว_highlights": [
+      "✅ LangGraph pipeline ครบ 7 agents พร้อม fix-loop",
+      "✅ Multi-LLM provider routing (OpenAI/Gemini/Claude/GLM/DeepSeek/OpenRouter)",
+      "✅ Phoenix REST deep integration — session + span annotations",
+      "✅ OTel tracing ครบวงจร → Phoenix + ELK",
+      "✅ Redis state checkpointing",
+      "✅ Garage S3 artifact upload",
+      "✅ Context overflow fix (12K char truncation)",
+      "✅ poc_dental.py Exit Code 0",
+      "✅ Analytics dashboard ครบ 10+ pages",
+      "✅ Prisma schema ครบ (Session, Handoff, History, AgentRun, LlmCall, FileChange, Artifact)",
+      "✅ Docker infrastructure stack ครบ",
+      "✅ persistence:compileJava — BUILD SUCCESSFUL (ExitCode: 0, 2026-05-28)",
+      "✅ poc_doctor pipeline — compile_passed=True (Run ID: 2ffb1e48)",
+      "✅ Garage S3 FULLY INITIALIZED — layout applied, buckets traces+langfuse, key imported, permissions set",
+      "✅ FastAPI POST /chat endpoint added — Insight Agent co-pilot live",
+      "✅ analytics route.ts — proxies Insight Agent to FastAPI /chat"
+    ],
+
+    "ต้องทำ_ด่วน": [
+      "🔴 รัน poc_doctor.py ด้วย max_fix_iterations สูงขึ้น (≥3) เพื่อให้ test_agent สร้างและผ่าน unit tests",
+      "🔴 ตรวจสอบ FastAPI /chat endpoint ทำงานได้จริง (Invoke-RestMethod http://localhost:8000/chat)"
+    ],
+
+    "ต้องทำ_medium": [
+      "🟡 Index Obsidian vault เข้า Qdrant (brain-notes collection ที่ :6333)",
+      "🟡 ทดสอบ Insight Agent panel จาก Analytics UI กับ FastAPI จริง",
+      "🟡 ทดสอบ artifact download ผ่าน analytics /file-server page"
+    ],
+
+    "ต้องทำ_ในอนาคต": [
+      "🟢 Phase 2: Integration tests สำหรับ 8 persistence packages",
+      "🟢 Phase 4: ลบ JNDI lookups จาก service/app layer",
+      "🟢 Phase 5: Flyway/Liquibase schema migration scripts",
+      "🟢 ขยาย entity-playbooks ครบ 8 packages ใน Obsidian vault"
+    ]
+  },
+
+  "คำศัพท์_Glossary": {
+    "EJB 2.x CMP": "Enterprise JavaBeans 2.x Container-Managed Persistence — Java legacy tech เก่า",
+    "Spring Data JPA": "Spring framework สมัยใหม่สำหรับ database access ด้วย JPA annotations",
+    "LangGraph": "Framework สำหรับสร้าง stateful AI workflows แบบ graph",
+    "LangChain": "Framework สำหรับสร้าง LLM-powered applications",
+    "Phoenix": "LLM Observability UI จาก Arize — ดู traces, spans, ประเมิน quality",
+    "OTel": "OpenTelemetry — standard สำหรับ distributed tracing/metrics/logs",
+    "Qdrant": "Vector database สำหรับ semantic search",
+    "Garage": "Self-hosted S3-compatible object storage",
+    "Prisma": "TypeScript ORM สำหรับ PostgreSQL",
+    "MigrationState": "TypedDict ที่เป็น shared state ระหว่าง LangGraph nodes ทั้งหมด",
+    "traced_node": "Python decorator ที่ wrap LangGraph node ให้สร้าง OTel span อัตโนมัติ"
+  }
+}

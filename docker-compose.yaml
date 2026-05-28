@@ -1,0 +1,28 @@
+volumes:
+  db_data:
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: progress_hub_db
+    ports:
+      - "51285:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      DATABASE_URL: postgresql://postgres:password@db:5432/progress_hub_db
+    depends_on:
+      - db
