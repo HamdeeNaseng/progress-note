@@ -1,4 +1,4 @@
-import { Pool } from "../../node_modules/@types/pg";
+import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
 import type { Note as AppNote, NoteTemplate as AppNoteTemplate } from "@/data/progress-data";
 
@@ -12,6 +12,7 @@ const pool = new Pool({ connectionString });
 
 type NoteRow = {
   id: string;
+  projectId: string | null;
   template: AppNote["template"];
   impact: AppNote["impact"];
   state: string;
@@ -47,6 +48,7 @@ function toUiNote(
 ): AppNote {
   return {
     id: row.id,
+    projectId: row.projectId ?? undefined,
     template: row.template,
     impact: row.impact,
     state: toUiState(row.state),
@@ -65,7 +67,7 @@ async function getNoteById(id: string): Promise<AppNote | null> {
   const client = await pool.connect();
   try {
     const noteResult = await client.query<NoteRow>(
-      'SELECT id, template, impact, state, title, date, research FROM "Note" WHERE id = $1',
+      'SELECT id, "projectId", template, impact, state, title, date, research FROM "Note" WHERE id = $1',
       [id],
     );
 
@@ -115,12 +117,17 @@ async function getNoteById(id: string): Promise<AppNote | null> {
   }
 }
 
-export async function listNotes(): Promise<AppNote[]> {
+export async function listNotes(projectId?: string): Promise<AppNote[]> {
   const client = await pool.connect();
   try {
-    const result = await client.query<NoteRow>(
-      'SELECT id, template, impact, state, title, date, research FROM "Note" ORDER BY date DESC, "createdAt" DESC',
-    );
+    const result = projectId
+      ? await client.query<NoteRow>(
+          'SELECT id, "projectId", template, impact, state, title, date, research FROM "Note" WHERE "projectId" = $1 ORDER BY date DESC, "createdAt" DESC',
+          [projectId],
+        )
+      : await client.query<NoteRow>(
+          'SELECT id, "projectId", template, impact, state, title, date, research FROM "Note" ORDER BY date DESC, "createdAt" DESC',
+        );
 
     const notes: AppNote[] = [];
     for (const row of result.rows) {
@@ -134,7 +141,7 @@ export async function listNotes(): Promise<AppNote[]> {
   }
 }
 
-export async function createNote(payload: { id?: string; template: AppNoteTemplate }): Promise<AppNote> {
+export async function createNote(payload: { id?: string; template: AppNoteTemplate; projectId?: string }): Promise<AppNote> {
   const id = payload.id ?? `n${Date.now()}`;
   const now = new Date();
   const client = await pool.connect();
@@ -142,8 +149,8 @@ export async function createNote(payload: { id?: string; template: AppNoteTempla
   try {
     await client.query("BEGIN");
     await client.query(
-      'INSERT INTO "Note" (id, template, impact, state, title, date, research, "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)',
-      [id, payload.template, "medium", "draft", "Untitled progress note", now, "", now],
+      'INSERT INTO "Note" (id, "projectId", template, impact, state, title, date, research, "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)',
+      [id, payload.projectId ?? null, payload.template, "medium", "draft", "Untitled progress note", now, "", now],
     );
     await client.query(
       'INSERT INTO "NoteSummaryBullet" (id, "noteId", position, text) VALUES ($1, $2, $3, $4)',

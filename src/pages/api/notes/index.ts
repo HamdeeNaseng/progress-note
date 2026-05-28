@@ -5,7 +5,8 @@ import type { NoteTemplate } from "@/data/progress-data";
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method === "GET") {
     try {
-      const notes = await listNotes();
+      const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
+      const notes = await listNotes(projectId);
       res.status(200).json(notes);
       return;
     } catch (error) {
@@ -17,13 +18,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (req.method === "POST") {
     try {
-      const body = req.body as { id?: string; template?: NoteTemplate };
+      const body = req.body as { id?: string; template?: NoteTemplate; projectId?: string };
       if (!body?.template || !["feature", "performance", "incident"].includes(body.template)) {
         res.status(400).json({ error: "Invalid template" });
         return;
       }
 
-      const note = await createNote({ id: body.id, template: body.template });
+      const note = await createNote({ id: body.id, template: body.template, projectId: body.projectId });
       res.status(201).json(note);
       return;
     } catch (error) {

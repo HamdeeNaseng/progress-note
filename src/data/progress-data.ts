@@ -346,6 +346,7 @@ export type NoteState = "draft" | "in-review" | "deployed" | "monitoring" | "rol
 
 export type Note = {
   id: string;
+  projectId?: string;
   template: NoteTemplate;
   impact: NoteImpact;
   state: NoteState;

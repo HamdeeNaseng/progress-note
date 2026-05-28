@@ -1,26 +1,433 @@
-@import "tailwindcss";
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@import "../styles/styles.css";
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+.input-base {
+  display: block;
+  width: 100%;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  padding: 0.375rem 0.625rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  outline: none;
+  color: var(--color-foreground);
+}
+
+.input-base:focus {
+  border-color: var(--color-ring);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--color-ring) 40%, transparent);
+}
+
+/* ── Accordion animation ─────────────────────────────────────────────────── */
+/*
+ * Primary strategy: interpolate-size + block-size: 0 → auto (Chrome/Edge 129+)
+ * Fallback strategy: grid-template-rows: 0fr → 1fr (all modern browsers)
+ * Guide: animate-to-intrinsic-sizes (modern-web-guidance)
+ */
+
+:root {
+  interpolate-size: allow-keywords;
+}
+
+/* Fallback: grid trick — works in Firefox, Safari, and all browsers */
+.accordion-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.accordion-panel[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+
+.accordion-panel-inner {
+  overflow: hidden;
+  min-block-size: 0;
+}
+
+/* Progressive enhancement: native block-size animation when supported */
+@supports (interpolate-size: allow-keywords) {
+  .accordion-panel {
+    display: block;
+    block-size: 0;
+    overflow: hidden;
+    transition: block-size 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .accordion-panel[data-open="true"] {
+    block-size: auto;
+  }
+
+  .accordion-panel-inner {
+    overflow: visible;
+    min-block-size: revert;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Respect user's motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .accordion-panel {
+    transition: none !important;
+  }
+}
+
+/* ── Tab Bar (CSS Anchor Positioning) ───────────────────────────────────────
+ * Primary:  anchor-name / position-anchor pill slides between active tabs.
+ *           Guide: anchor-positioning-tab-underline (modern-web-guidance)
+ *           Support: Chrome/Edge 125+, Safari TP (not Firefox yet)
+ * Fallback: @supports not (position-anchor: auto) → direct bg on active button
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.tab-bar {
+  list-style: none;
+  margin: 0;
+  display: inline-flex;
+  align-items: stretch;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--color-muted);
+  border: 1px solid var(--color-border);
+  /* Required for absolute-positioned ::before to be contained */
+  position: relative;
+  /* New stacking context so z-index on li/::before is local */
+  isolation: isolate;
+}
+
+/* Mark the active <li> as the CSS anchor so ::before can tether to it */
+.tab-bar li[data-active="true"] {
+  anchor-name: --tab-active;
+}
+
+/* Sliding pill: positioned to fully cover the active tab */
+.tab-bar::before {
+  content: "";
+  position: absolute;
+  position-anchor: --tab-active;
+  /* Align all four edges with the active anchor element */
+  inset-block-start: anchor(top);
+  inset-block-end: anchor(bottom);
+  inset-inline-start: anchor(left);
+  inset-inline-end: anchor(right);
+  border-radius: calc(999px - 3px);
+  background: var(--color-card);
+  box-shadow: 0 1px 3px oklch(0% 0 0 / 0.12);
+  /* Sit behind tab content */
+  z-index: 0;
+}
+
+/* Animate the pill only when motion is acceptable */
+@media (prefers-reduced-motion: no-preference) {
+  .tab-bar::before {
+    transition: inset 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+/* li must form a stacking context to sit above the ::before pill */
+.tab-bar li {
+  position: relative;
+  z-index: 1;
+}
+
+/* Individual tab buttons */
+.tab-bar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding-block: 0.3125rem;
+  padding-inline: 0.75rem;
+  border-radius: calc(999px - 3px);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--color-muted-foreground);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s;
+}
+
+.tab-bar-btn[aria-selected="true"] {
+  color: var(--color-foreground);
+}
+
+.tab-bar-btn:hover:not([aria-selected="true"]) {
+  color: color-mix(in oklch, var(--color-foreground) 70%, var(--color-muted-foreground));
+}
+
+.tab-bar-btn:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+/* Count badge inside a tab */
+.tab-bar-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 1.125rem;
+  padding-inline: 0.25rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.5;
+  background: color-mix(in oklch, var(--color-foreground) 12%, transparent);
+}
+
+/* Fallback: anchor positioning not supported — hide the pseudo-element pill
+ * and apply a background directly on the active button instead.         */
+@supports not (position-anchor: auto) {
+  .tab-bar::before {
+    display: none;
+  }
+
+  .tab-bar li[data-active="true"] .tab-bar-btn {
+    background: var(--color-card);
+    color: var(--color-foreground);
+    box-shadow: 0 1px 3px oklch(0% 0 0 / 0.12);
+  }
+}
+
+/* ── Dashboard Card (Container Queries) ──────────────────────────────────────
+ * Container queries: Baseline Widely Available (Chrome/Edge 105, FF 110, Safari 16).
+ * No @supports gate needed — the default stacked column is a safe fallback.
+ * Guide: size-aware-styling (modern-web-guidance)
+ *
+ * Three layout breakpoints measured against the card's OWN inline-size:
+ *   < 240px  — narrow:  icon hidden, label + value stacked vertically
+ *   ≥ 240px  — medium:  icon appears, row layout (icon | body)
+ *   ≥ 460px  — wide:    aside panel visible, description revealed,
+ *                        value scales fluidly via cqi units
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/* .dash-card-wrap is the measured container — must wrap every .dash-card */
+.dash-card-wrap {
+  container-type: inline-size;
+  container-name: dash-card;
+}
+
+/* ── Base / narrow (< 240px) ─────────────────────────────────────────────── */
+
+.dash-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-card);
+  block-size: 100%;
+}
+
+/* Icon slot: hidden at narrow widths to save horizontal space */
+.dash-card-icon {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--color-primary) 10%, transparent);
+  color: var(--color-primary);
+}
+
+.dash-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-inline-size: 0;
+}
+
+.dash-card-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Value uses cqi units for fluid scaling as the card grows wider */
+.dash-card-value {
+  font-size: clamp(1.25rem, 6cqi, 2.25rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  color: var(--color-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-card-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1875rem;
+  margin-block-start: 0.25rem;
+  padding-block: 0.125rem;
+  padding-inline: 0.4375rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  align-self: flex-start;
+}
+
+.dash-card-trend[data-dir="up"] {
+  background: color-mix(in oklch, oklch(72% 0.17 145) 18%, transparent);
+  color: oklch(65% 0.17 145);
+}
+
+.dash-card-trend[data-dir="down"] {
+  background: color-mix(in oklch, var(--color-destructive) 18%, transparent);
+  color: var(--color-destructive);
+}
+
+.dash-card-trend[data-dir="neutral"] {
+  background: color-mix(in oklch, var(--color-muted-foreground) 14%, transparent);
+  color: var(--color-muted-foreground);
+}
+
+/* Description and aside: hidden by default, revealed progressively */
+.dash-card-desc {
+  display: none;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--color-muted-foreground);
+  margin-block-start: 0.25rem;
+}
+
+.dash-card-aside {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+  padding-inline-start: 1rem;
+  border-inline-start: 1px solid var(--color-border);
+}
+
+.dash-card-aside-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.0625rem;
+}
+
+.dash-card-aside-value {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-card-aside-label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-muted-foreground);
+}
+
+/* ── Tooltip (Popover API + CSS Anchor Positioning) ─────────────────────────
+ * Visual shell and animation for .tt-content popovers.
+ * Positioning is applied imperatively via style.setProperty() in the React
+ * component (see src/components/ui/tooltip.tsx) because anchor names must be
+ * unique per instance.
+ *
+ * Browsers without CSS Anchor Positioning support fall back to the UA default
+ * popover centering (centre of the viewport).
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/* Reset popover UA styles only when anchor positioning is available so the
+   component's imperative positioning takes over. */
+@supports (anchor-name: --x) {
+  .tt-content[popover] {
+    position: fixed;
+    inset: auto;
+    margin: unset;
+  }
+}
+
+/* Visual shell */
+.tt-content {
+  z-index: 50;
+  max-inline-size: 18rem;
+  padding-block: 0.375rem;
+  padding-inline: 0.75rem;
+  border-radius: var(--radius-md);
+  border: none;
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  white-space: normal;
+  box-shadow: 0 4px 16px oklch(0% 0 0 / 0.35);
+
+  /* Entry/exit animation — requires transition-behavior: allow-discrete         */
+  /* so that `display` and `overlay` (top-layer membership) also transition.     */
+  /* @starting-style provides the "before first paint" values for entry.         */
+  opacity: 0;
+  scale: 0.92;
+  transition-property: opacity, scale, display, overlay;
+  transition-duration: 0.15s;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  transition-behavior: allow-discrete;
+}
+
+.tt-content:popover-open {
+  opacity: 1;
+  scale: 1;
+
+  @starting-style {
+    opacity: 0;
+    scale: 0.92;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tt-content {
+    scale: 1;
+    transition-duration: 0.05s;
+  }
+}
+
+/* ── Medium layout (≥ 240px): icon appears, row arrangement ─────────────── */
+@container dash-card (min-width: 240px) {
+  .dash-card {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 0.875rem;
+  }
+
+  .dash-card-icon {
+    /* Reveal the icon at medium+ widths */
+    display: flex;
+    /* Optical alignment — nudges icon in line with the label cap-height */
+    margin-block-start: 0.125rem;
+  }
+
+  .dash-card-body {
+    flex: 1 1 0;
+  }
+}
+
+/* ── Wide layout (≥ 460px): aside panel + description revealed ───────────── */
+@container dash-card (min-width: 460px) {
+  .dash-card {
+    align-items: stretch;
+  }
+
+  .dash-card-desc {
+    display: block;
+  }
+
+  .dash-card-aside {
+    display: flex;
+  }
 }

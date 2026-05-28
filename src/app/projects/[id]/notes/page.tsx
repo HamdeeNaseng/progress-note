@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   milestones,
   skillBank,
@@ -8,7 +10,7 @@ import {
   type Note,
   type NoteTemplate,
 } from "@/data/progress-data";
-import { notesStore, useNotes } from "@/lib/notes-store";
+import { getProjectStore, useProjectNotes } from "@/lib/notes-store";
 
 const templateChoices: Array<{ value: NoteTemplate; label: string }> = [
   { value: "feature", label: "Feature / Architecture" },
@@ -16,20 +18,50 @@ const templateChoices: Array<{ value: NoteTemplate; label: string }> = [
   { value: "incident", label: "Incident / Hotfix" },
 ];
 
-export default function NotesCrudPage() {
-  const notes = useNotes();
-  const [activeId, setActiveId] = useState(notes[0]?.id ?? "");
-  const active = useMemo(() => notes.find((n) => n.id === activeId) ?? notes[0], [activeId, notes]);
+export default function ProjectNotesPage() {
+  const params = useParams();
+  const router = useRouter();
+  const projectId = typeof params.id === "string" ? params.id : (params.id?.[0] ?? "");
+
+  const store = getProjectStore(projectId);
+  const notes = useProjectNotes(projectId);
+
+  const [activeId, setActiveId] = useState<string>("");
+  const active = useMemo(
+    () => notes.find((n) => n.id === (activeId || notes[0]?.id)) ?? notes[0],
+    [activeId, notes],
+  );
+
+  if (!projectId) {
+    return <div className="p-8 text-sm text-muted-foreground">Invalid project.</div>;
+  }
 
   if (!active) {
     return (
-      <div className="p-8">
-        <p className="text-sm text-muted-foreground">No notes available.</p>
+      <div className="p-8 space-y-4">
+        <Breadcrumb projectId={projectId} />
+        <p className="text-sm text-muted-foreground">No notes yet.</p>
+        <select
+          className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+          defaultValue=""
+          onChange={(e) => {
+            const template = e.target.value as NoteTemplate;
+            if (!template) return;
+            const id = store.add(template);
+            setActiveId(id);
+            e.currentTarget.value = "";
+          }}
+        >
+          <option value="" disabled>New note from template</option>
+          {templateChoices.map((c) => (
+            <option key={c.value} value={c.value}>{c.label}</option>
+          ))}
+        </select>
       </div>
     );
   }
 
-  const update = (patch: Partial<Note>) => notesStore.update(active.id, patch);
+  const update = (patch: Partial<Note>) => store.update(active.id, patch);
   const setField = (key: string, value: string) =>
     update({ fields: { ...active.fields, [key]: value } });
   const setMetric = (key: "baselineMs" | "postMs" | "coveragePct", value: string) => {
@@ -43,10 +75,8 @@ export default function NotesCrudPage() {
     <div className="p-6 md:p-8 max-w-[1500px] mx-auto space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            Progress Notes
-          </p>
-          <h1 className="text-3xl font-semibold tracking-tight">Notes CRUD</h1>
+          <Breadcrumb projectId={projectId} />
+          <h1 className="text-3xl font-semibold tracking-tight mt-1">Notes</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Create, read, update, and delete structured engineering progress notes.
           </p>
@@ -57,30 +87,24 @@ export default function NotesCrudPage() {
             defaultValue=""
             onChange={(e) => {
               const template = e.target.value as NoteTemplate;
-              if (!template) {
-                return;
-              }
-              const id = notesStore.add(template);
+              if (!template) return;
+              const id = store.add(template);
               setActiveId(id);
               e.currentTarget.value = "";
             }}
           >
-            <option value="" disabled>
-              New note from template
-            </option>
-            {templateChoices.map((choice) => (
-              <option key={choice.value} value={choice.value}>
-                {choice.label}
-              </option>
+            <option value="" disabled>New note from template</option>
+            {templateChoices.map((c) => (
+              <option key={c.value} value={c.value}>{c.label}</option>
             ))}
           </select>
           <button
             onClick={() => {
-              notesStore.remove(active.id);
-              const next = notesStore.get()[0];
+              store.remove(active.id);
+              const next = store.get()[0];
               setActiveId(next?.id ?? "");
             }}
-            className="h-10 rounded-md border border-destructive/30 bg-destructive/10 px-3 text-sm text-destructive hover:bg-destructive/15"
+            className="h-10 rounded-md border border-rose-300 bg-rose-50 px-3 text-sm text-rose-700 hover:bg-rose-100"
           >
             Delete
           </button>
@@ -89,9 +113,7 @@ export default function NotesCrudPage() {
 
       <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-5">
         <aside className="rounded-lg border border-border bg-card p-3 h-fit">
-          <h2 className="px-2 py-1 text-xs uppercase tracking-wider text-muted-foreground">
-            All Notes
-          </h2>
+          <h2 className="px-2 py-1 text-xs uppercase tracking-wider text-muted-foreground">All Notes</h2>
           <ul className="mt-1 space-y-1">
             {notes.map((note) => (
               <li key={note.id}>
@@ -102,9 +124,7 @@ export default function NotesCrudPage() {
                   }`}
                 >
                   <p className="truncate text-sm font-medium">{note.title}</p>
-                  <p
-                    className={`text-xs ${note.id === active.id ? "text-primary-foreground/80" : "text-muted-foreground"}`}
-                  >
+                  <p className={`text-xs ${note.id === active.id ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
                     {note.date} · {note.template}
                   </p>
                 </button>
@@ -138,10 +158,8 @@ export default function NotesCrudPage() {
                   value={active.template}
                   onChange={(e) => update({ template: e.target.value as NoteTemplate })}
                 >
-                  {templateChoices.map((choice) => (
-                    <option key={choice.value} value={choice.value}>
-                      {choice.label}
-                    </option>
+                  {templateChoices.map((c) => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
                   ))}
                 </select>
               </LabeledField>
@@ -151,10 +169,8 @@ export default function NotesCrudPage() {
                   value={active.impact}
                   onChange={(e) => update({ impact: e.target.value as Note["impact"] })}
                 >
-                  {["critical", "high", "medium", "low"].map((impact) => (
-                    <option key={impact} value={impact}>
-                      {impact}
-                    </option>
+                  {["critical", "high", "medium", "low"].map((v) => (
+                    <option key={v} value={v}>{v}</option>
                   ))}
                 </select>
               </LabeledField>
@@ -164,10 +180,8 @@ export default function NotesCrudPage() {
                   value={active.state}
                   onChange={(e) => update({ state: e.target.value as Note["state"] })}
                 >
-                  {["draft", "in-review", "deployed", "monitoring", "rolled-back"].map((state) => (
-                    <option key={state} value={state}>
-                      {state}
-                    </option>
+                  {["draft", "in-review", "deployed", "monitoring", "rolled-back"].map((v) => (
+                    <option key={v} value={v}>{v}</option>
                   ))}
                 </select>
               </LabeledField>
@@ -182,9 +196,7 @@ export default function NotesCrudPage() {
                     value={line}
                     onChange={(e) =>
                       update({
-                        summary: active.summary.map((current, idx) =>
-                          idx === i ? e.target.value : current,
-                        ),
+                        summary: active.summary.map((cur, idx) => (idx === i ? e.target.value : cur)),
                       })
                     }
                     placeholder="Short bullet"
@@ -269,13 +281,13 @@ export default function NotesCrudPage() {
                       <input
                         type="checkbox"
                         checked={checked}
-                        onChange={() => {
+                        onChange={() =>
                           update({
                             skills: checked
                               ? active.skills.filter((s) => s !== skill)
                               : [...active.skills, skill],
-                          });
-                        }}
+                          })
+                        }
                       />
                       {skill}
                     </label>
@@ -293,13 +305,13 @@ export default function NotesCrudPage() {
                       <input
                         type="checkbox"
                         checked={checked}
-                        onChange={() => {
+                        onChange={() =>
                           update({
                             linkedMilestones: checked
                               ? active.linkedMilestones.filter((m) => m !== milestone.id)
                               : [...active.linkedMilestones, milestone.id],
-                          });
-                        }}
+                          })
+                        }
                       />
                       {milestone.title}
                     </label>
@@ -311,6 +323,18 @@ export default function NotesCrudPage() {
         </section>
       </div>
     </div>
+  );
+}
+
+function Breadcrumb({ projectId }: { projectId: string }) {
+  return (
+    <nav className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <Link href="/" className="hover:text-foreground">Projects</Link>
+      <span>/</span>
+      <span className="font-medium text-foreground truncate max-w-[160px]">{projectId}</span>
+      <span>/</span>
+      <span>Notes</span>
+    </nav>
   );
 }
 
